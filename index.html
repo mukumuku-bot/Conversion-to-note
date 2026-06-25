@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PDF Study Notes</title>
+    <title>AI PDF Study Notes</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
     <style>
         :root {
             --bg-color: #f4f1ea;
@@ -13,14 +14,10 @@
             --note-bg: #ffffff;
             --line-color: #e0dcd3;
             --text-color: #333333;
-            --accent-color: #bf616a; /* 赤ペンのイメージ */
+            --accent-color: #bf616a;
         }
 
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
 
         body {
             font-family: 'Helvetica Neue', Arial, 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', Meiryo, sans-serif;
@@ -31,13 +28,12 @@
             overflow: hidden;
         }
 
-        /* サイドバー（目次・PDFリスト） */
+        /* サイドバー */
         .sidebar {
-            width: 280px;
+            width: 300px;
             background-color: var(--sidebar-bg);
             color: var(--sidebar-text);
             display: flex;
-            flex-direction: flex-direction;
             flex-direction: column;
             border-right: 1px solid rgba(0,0,0,0.1);
         }
@@ -48,6 +44,23 @@
             font-weight: bold;
             border-bottom: 1px solid var(--sidebar-active);
             text-align: center;
+        }
+
+        .config-area {
+            padding: 10px 15px;
+            background-color: rgba(0,0,0,0.2);
+            font-size: 0.8rem;
+            border-bottom: 1px solid var(--sidebar-active);
+        }
+
+        .config-area input {
+            width: 100%;
+            padding: 5px;
+            margin-top: 5px;
+            background: #3b4252;
+            border: 1px solid var(--sidebar-active);
+            color: white;
+            border-radius: 3px;
         }
 
         .note-list {
@@ -67,10 +80,7 @@
             text-overflow: ellipsis;
         }
 
-        .note-item:hover {
-            background-color: rgba(255, 255, 255, 0.1);
-        }
-
+        .note-item:hover { background-color: rgba(255, 255, 255, 0.1); }
         .note-item.active {
             background-color: var(--sidebar-active);
             font-weight: bold;
@@ -80,25 +90,30 @@
         .actions {
             padding: 15px;
             border-top: 1px solid var(--sidebar-active);
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
         }
 
         .btn {
             width: 100%;
-            padding: 10px;
-            background-color: var(--accent-color);
+            padding: 12px;
             color: white;
             border: none;
             border-radius: 5px;
             cursor: pointer;
             font-weight: bold;
             transition: opacity 0.2s;
+            text-align: center;
+        }
+        .btn-add { background-color: var(--sidebar-active); }
+        .btn-upload { background-color: var(--accent-color); position: relative; }
+        .btn:hover { opacity: 0.9; }
+        .btn input[type="file"] {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer;
         }
 
-        .btn:hover {
-            opacity: 0.9;
-        }
-
-        /* メインコンテンツ（ノートエリア） */
+        /* メインコンテンツ */
         .main-content {
             flex-grow: 1;
             padding: 40px;
@@ -107,7 +122,6 @@
             justify-content: center;
         }
 
-        /* ルーズリーフ風のノート */
         .notebook {
             width: 100%;
             max-width: 800px;
@@ -116,117 +130,95 @@
             box-shadow: 0 4px 15px rgba(0,0,0,0.05);
             border-radius: 8px;
             position: relative;
-            padding: 60px 50px 40px 80px; /* 左側にマージン（穴あきスペース用） */
+            padding: 60px 50px 40px 80px;
             background-image: linear-gradient(var(--line-color) 1px, transparent 1px);
             background-size: 100% 2em;
             line-height: 2em;
         }
 
-        /* ノートの左側の赤い縦線 */
         .notebook::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 65px;
-            width: 2px;
-            height: 100%;
+            content: ''; position: absolute; top: 0; left: 65px; width: 2px; height: 100%;
             background-color: rgba(191, 97, 106, 0.4);
         }
 
-        /* ノートのバインダー穴（デザインのアクセント） */
         .notebook-holes {
-            position: absolute;
-            left: 20px;
-            top: 40px;
-            display: flex;
-            flex-direction: column;
-            gap: 30px;
+            position: absolute; left: 20px; top: 40px; display: flex; flex-direction: column; gap: 30px;
         }
+        .hole { width: 15px; height: 15px; background-color: var(--bg-color); border-radius: 50%; box-shadow: inset 0 2px 5px rgba(0,0,0,0.1); }
 
-        .hole {
-            width: 15px;
-            height: 15px;
-            background-color: var(--bg-color);
-            border-radius: 50%;
-            box-shadow: inset 0 2px 5px rgba(0,0,0,0.1);
-        }
+        .note-title { font-size: 1.8rem; font-weight: bold; margin-bottom: 20px; line-height: 1.2; outline: none; }
+        .note-body { font-size: 1.05rem; outline: none; white-space: pre-wrap; }
 
-        /* タイトルエリア */
-        .note-title {
-            font-size: 1.8rem;
-            font-weight: bold;
-            margin-bottom: 20px;
-            line-height: 1.2;
-            padding-bottom: 5px;
-            outline: none;
-        }
+        [contenteditable]:empty:before { content: attr(data-placeholder); color: #aaa; font-style: italic; }
 
-        /* 本文エリア */
-        .note-body {
-            font-size: 1.05rem;
-            outline: none;
-            white-space: pre-wrap;
+        /* ローディングアニメーション */
+        .loading-overlay {
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.5); color: white; justify-content: center; align-items: center;
+            font-size: 1.5rem; font-weight: bold; z-index: 1000; flex-direction: column; gap: 20px;
         }
-
-        /* プレースホルダー（空の時の案内） */
-        [contenteditable]:empty:before {
-            content: attr(data-placeholder);
-            color: #aaa;
-            font-style: italic;
-        }
+        .spinner { width: 50px; height: 50px; border: 5px solid #fff; border-top-color: var(--accent-color); border-radius: 50%; animation: spin 1s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
 
+    <div id="loadingOverlay" class="loading-overlay">
+        <div class="spinner"></div>
+        <div id="loadingText">PDFを解析中...</div>
+    </div>
+
     <div class="sidebar">
-        <div class="sidebar-header">PDF まとめノート</div>
-        <ul class="note-list" id="noteList">
-            </ul>
+        <div class="sidebar-header">AI PDF まとめノート</div>
+        
+        <div class="config-area">
+            <label for="apiKey">🔑 Gemini API キー:</label>
+            <input type="password" id="apiKey" placeholder="AIキーを入力（初回のみ）">
+        </div>
+
+        <ul class="note-list" id="noteList"></ul>
+        
         <div class="actions">
-            <button class="btn" id="addNoteBtn">+ 新しいノートを追加</button>
+            <button class="btn btn-upload">
+                📂 PDFをアップロードしてノート化
+                <input type="file" id="pdfInput" accept=".pdf">
+            </button>
+            <button class="btn btn-add" id="addNoteBtn">+ 空のノートを追加</button>
         </div>
     </div>
 
     <div class="main-content">
         <div class="notebook">
             <div class="notebook-holes">
-                <div class="hole"></div>
-                <div class="hole"></div>
-                <div class="hole"></div>
-                <div class="hole"></div>
-                <div class="hole"></div>
+                <div class="hole"></div><div class="hole"></div><div class="hole"></div><div class="hole"></div><div class="hole"></div>
             </div>
-            
-            <div class="note-title" id="noteTitle" contenteditable="true" data-placeholder="PDFのタイトルや章を入力..."></div>
-            <div class="note-body" id="noteBody" contenteditable="true" data-placeholder="ここにPDFからコピーした内容や、まとめ、重要なポイントを自由にメモしてください..."></div>
+            <div class="note-title" id="noteTitle" contenteditable="true" data-placeholder="タイトル..."></div>
+            <div class="note-body" id="noteBody" contenteditable="true" data-placeholder="内容..."></div>
         </div>
     </div>
 
     <script>
-        // サンプルデータ（初期表示用）
-        const defaultNotes = [
-            {
-                id: "1",
-                title: "📄 憲法第1章 講義ノート",
-                body: "【重要なポイント】\n・天皇の地位は「日本国民の総意」に基づく。\n・第9条：戦争の放棄、戦力の不保持、交戦権の否認。\n\n【自分のメモ】\nここはテストに出やすいからPDFの35ページ目をもう一度見直すこと！"
-            },
-            {
-                id: "2",
-                title: "📊 経済学基礎 A講義資料",
-                body: "■ 需要と供給の法則\n価格が上がると需要は減り、供給は増える。\n\n■ キーワード\n・均衡価格：需要量と供給量が一致する価格。\n・機会費用：ある選択肢を選んだことで諦めた価値。"
-            }
-        ];
+        // PDF.jsの初期化
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
 
-        // データの読み込み（LocalStorageまたは初期データ）
-        let notes = JSON.parse(localStorage.getItem('pdf_study_notes')) || defaultNotes;
+        let notes = JSON.parse(localStorage.getItem('ai_pdf_notes')) || [];
         let currentNoteId = notes.length > 0 ? notes[0].id : null;
 
         const noteListEl = document.getElementById('noteList');
         const noteTitleEl = document.getElementById('noteTitle');
         const noteBodyEl = document.getElementById('noteBody');
         const addNoteBtn = document.getElementById('addNoteBtn');
+        const pdfInput = document.getElementById('pdfInput');
+        const apiKeyInput = document.getElementById('apiKey');
+        const loadingOverlay = document.getElementById('loadingOverlay');
+        const loadingText = document.getElementById('loadingText');
 
-        // サイドバーのリストを描画
+        // APIキーの初期読み込み
+        apiKeyInput.value = localStorage.getItem('gemini_api_key') || '';
+        apiKeyInput.addEventListener('input', () => {
+            localStorage.setItem('gemini_api_key', apiKeyInput.value);
+        });
+
         function renderSidebar() {
             noteListEl.innerHTML = '';
             notes.forEach(note => {
@@ -238,13 +230,12 @@
             });
         }
 
-        // ノートの選択
         function selectNote(id) {
             currentNoteId = id;
             const note = notes.find(n => n.id === id);
             if (note) {
                 noteTitleEl.textContent = note.title;
-                noteBodyEl.innerText = note.body; // 改行を維持するためinnerText
+                noteBodyEl.innerText = note.body;
             } else {
                 noteTitleEl.textContent = '';
                 noteBodyEl.innerText = '';
@@ -252,50 +243,122 @@
             renderSidebar();
         }
 
-        // ノートの保存
         function saveNotes() {
             const currentNote = notes.find(n => n.id === currentNoteId);
             if (currentNote) {
                 currentNote.title = noteTitleEl.textContent;
                 currentNote.body = noteBodyEl.innerText;
-                localStorage.setItem('pdf_study_notes', JSON.stringify(notes));
-                
-                // サイドバーのタイトルだけリアルタイム更新
+                localStorage.setItem('ai_pdf_notes', JSON.stringify(notes));
                 const activeItem = document.querySelector('.note-item.active');
                 if (activeItem) activeItem.textContent = currentNote.title || '無題のノート';
             }
         }
 
-        // 新しいノートを追加
         addNoteBtn.addEventListener('click', () => {
             const newId = Date.now().toString();
-            const newNote = {
-                id: newId,
-                title: "📄 新しいノート",
-                body: ""
-            };
-            notes.push(newNote);
+            notes.push({ id: newId, title: "📄 新しいノート", body: "" });
             currentNoteId = newId;
             saveNotes();
             selectNote(newId);
         });
 
-        // 入力時の自動保存イベント
         noteTitleEl.addEventListener('input', saveNotes);
         noteBodyEl.addEventListener('input', saveNotes);
 
-        // ペースト時に余計なHTML装飾を剥ぎ取る（プレーンテキスト化）
-        noteBodyEl.addEventListener('paste', (e) => {
-            e.preventDefault();
-            const text = (e.originalEvent || e).clipboardData.getData('text/plain');
-            document.execCommand('insertText', false, text);
+        // --- PDF処理 ＆ AI生成ロジック ---
+        pdfInput.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const apiKey = apiKeyInput.value.trim();
+            if (!apiKey) {
+                alert('先にGemini APIキーを入力してください（Google AI Studioで無料で取得できます）');
+                pdfInput.value = '';
+                return;
+            }
+
+            loadingOverlay.style.display = 'flex';
+            loadingText.textContent = 'PDFからテキストを抽出中...';
+
+            try {
+                // 1. PDFからテキストを抽出
+                const arrayBuffer = await file.arrayBuffer();
+                const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+                let extractedText = '';
+                
+                // 負荷軽減のため、最大20ページまでに制限
+                const maxPages = Math.min(pdf.numPages, 20);
+                for (let i = 1; i <= maxPages; i++) {
+                    const page = await pdf.getPage(i);
+                    const textContent = await page.getTextContent();
+                    extractedText += textContent.items.map(item => item.str).join(' ') + '\n';
+                }
+
+                loadingText.textContent = 'AIが模範ノートを作成中（数十秒かかります）...';
+
+                // 2. Gemini API を叩いてまとめ直す
+                const prompt = `
+                以下のテキストは、あるPDFファイルから抽出した講義資料やドキュメントの内容です。
+                この内容を元に、学生や学習者が後から見直しやすい「美しく整理された模範ノート」を作成してください。
+                
+                【出力のルール】
+                1. 最初の1行目は、このPDFにふさわしいノートのタイトルにしてください（例: 「第3章 〇〇経済学の基礎」など）。2行目以降に本文を書いてください。
+                2. 本文は、箇条書き、重要キーワードの解説、重要な数式や法則、要約などを使い、構造的にわかりやすくまとめてください。
+                3. 親しみやすく、要点がパッと見でわかるようにしてください。
+                
+                【PDFのテキスト】
+                ${extractedText}
+                `;
+
+                // Gemini 1.5 Flash を使用（高速かつ無料枠あり）
+                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        contents: [{ parts: [{ text: prompt }] }]
+                    })
+                });
+
+                if (!response.ok) throw new Error('AIの呼び出しに失敗しました。APIキーを確認してください。');
+
+                const data = await response.json();
+                const aiResult = data.candidates[0].content.parts[0].text;
+
+                // 3. 結果をタイトルと本文に切り分ける
+                const lines = aiResult.split('\n');
+                let title = lines[0].replace(/^[#*\s📊📄]+/g, '').trim(); // 飾り文字を少し掃除
+                if (!title) title = file.name.replace('.pdf', '');
+                const body = lines.slice(1).join('\n').trim();
+
+                // 4. 新規ノートとして保存
+                const newId = Date.now().toString();
+                notes.push({ id: newId, title: "📝 " + title, body: body });
+                currentNoteId = newId;
+                
+                localStorage.setItem('ai_pdf_notes', JSON.stringify(notes));
+                selectNote(newId);
+
+            } catch (error) {
+                alert('エラーが発生しました: ' + error.message);
+                console.error(error);
+            } finally {
+                loadingOverlay.style.display = 'none';
+                pdfInput.value = ''; // 入力をリセット
+            }
         });
 
-        // 初期実行
-        if (currentNoteId) {
+        // 初期表示
+        if (notes.length > 0) {
             selectNote(currentNoteId);
         } else {
-            renderSidebar();
+            // 初期サンプル
+            notes.push({
+                id: "sample",
+                title: "💡 使い方ガイド",
+                body: "1. 左上の「Gemini API キー」の欄にあなたのAPIキーを入力します。\n2. 下の「PDFをアップロードしてノート化」ボタンからPDFを選びます。\n3. AIが自動で「模範ノート」をここに生成します！\n\n※生成されたノートは自分で自由に追記・修正も可能です。"
+            });
+            currentNoteId = "sample";
+            selectNote(currentNoteId);
         }
     </script>
 </body>
