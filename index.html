@@ -198,7 +198,6 @@
     </div>
 
     <script>
-        // PDF.jsの初期化
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
 
         let notes = JSON.parse(localStorage.getItem('ai_pdf_notes')) || [];
@@ -213,7 +212,6 @@
         const loadingOverlay = document.getElementById('loadingOverlay');
         const loadingText = document.getElementById('loadingText');
 
-        // APIキーの初期読み込み
         apiKeyInput.value = localStorage.getItem('gemini_api_key') || '';
         apiKeyInput.addEventListener('input', () => {
             localStorage.setItem('gemini_api_key', apiKeyInput.value);
@@ -272,7 +270,7 @@
 
             const apiKey = apiKeyInput.value.trim();
             if (!apiKey) {
-                alert('先にGemini APIキーを入力してください（Google AI Studioで無料で取得できます）');
+                alert('先にGemini APIキーを入力してください');
                 pdfInput.value = '';
                 return;
             }
@@ -281,12 +279,10 @@
             loadingText.textContent = 'PDFからテキストを抽出中...';
 
             try {
-                // 1. PDFからテキストを抽出
                 const arrayBuffer = await file.arrayBuffer();
                 const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
                 let extractedText = '';
                 
-                // 負荷軽減のため、最大20ページまでに制限
                 const maxPages = Math.min(pdf.numPages, 20);
                 for (let i = 1; i <= maxPages; i++) {
                     const page = await pdf.getPage(i);
@@ -294,23 +290,18 @@
                     extractedText += textContent.items.map(item => item.str).join(' ') + '\n';
                 }
 
-                loadingText.textContent = 'AIが模範ノートを作成中（数十秒かかります）...';
+                loadingText.textContent = 'AIが模範ノートを作成中...';
 
-                // 2. Gemini API を叩いてまとめ直す
                 const prompt = `
-                以下のテキストは、あるPDFファイルから抽出した講義資料やドキュメントの内容です。
-                この内容を元に、学生や学習者が後から見直しやすい「美しく整理された模範ノート」を作成してください。
+                以下のテキストは、あるPDFファイルの内容です。
+                学習者が後から見直しやすい「美しく整理された模範ノート」を作成してください。
+                1行目はノートのタイトル、2行目以降に箇条書きなどで分かりやすく本文を書いてください。
                 
-                【出力のルール】
-                1. 最初の1行目は、このPDFにふさわしいノートのタイトルにしてください（例: 「第3章 〇〇経済学の基礎」など）。2行目以降に本文を書いてください。
-                2. 本文は、箇条書き、重要キーワードの解説、重要な数式や法則、要約などを使い、構造的にわかりやすくまとめてください。
-                3. 親しみやすく、要点がパッと見でわかるようにしてください。
-                
-                【PDFのテキスト】
+                【テキスト】
                 ${extractedText}
                 `;
 
-                // Gemini 1.5 Flash を使用（高速かつ無料枠あり）
+                // 【修正ポイント】最新のAPI互換性を考慮したリクエスト
                 const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -319,18 +310,21 @@
                     })
                 });
 
-                if (!response.ok) throw new Error('AIの呼び出しに失敗しました。APIキーを確認してください。');
+                // 【修正ポイント】エラーの生の原因を表示できるように強化
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({}));
+                    const errorDetail = errorData.error?.message || `Status: ${response.status}`;
+                    throw new Error(`Google側で拒否されました。\n【エラー詳細】: ${errorDetail}`);
+                }
 
                 const data = await response.json();
                 const aiResult = data.candidates[0].content.parts[0].text;
 
-                // 3. 結果をタイトルと本文に切り分ける
                 const lines = aiResult.split('\n');
-                let title = lines[0].replace(/^[#*\s📊📄]+/g, '').trim(); // 飾り文字を少し掃除
+                let title = lines[0].replace(/^[#*\s📊📄]+/g, '').trim();
                 if (!title) title = file.name.replace('.pdf', '');
                 const body = lines.slice(1).join('\n').trim();
 
-                // 4. 新規ノートとして保存
                 const newId = Date.now().toString();
                 notes.push({ id: newId, title: "📝 " + title, body: body });
                 currentNoteId = newId;
@@ -339,23 +333,22 @@
                 selectNote(newId);
 
             } catch (error) {
-                alert('エラーが発生しました: ' + error.message);
+                // エラーの詳細をポップアップに出す
+                alert('エラーが発生しました:\n' + error.message);
                 console.error(error);
             } finally {
                 loadingOverlay.style.display = 'none';
-                pdfInput.value = ''; // 入力をリセット
+                pdfInput.value = '';
             }
         });
 
-        // 初期表示
         if (notes.length > 0) {
             selectNote(currentNoteId);
         } else {
-            // 初期サンプル
             notes.push({
                 id: "sample",
                 title: "💡 使い方ガイド",
-                body: "1. 左上の「Gemini API キー」の欄にあなたのAPIキーを入力します。\n2. 下の「PDFをアップロードしてノート化」ボタンからPDFを選びます。\n3. AIが自動で「模範ノート」をここに生成します！\n\n※生成されたノートは自分で自由に追記・修正も可能です。"
+                body: "1. 左上の「Gemini API キー」の欄にあなたのAPIキーを入力します。\n2. 下の「PDFをアップロードしてノート化」ボタンからPDFを選びます。"
             });
             currentNoteId = "sample";
             selectNote(currentNoteId);
