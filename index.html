@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF Study Notes</title>
+    <style>
+        :root {
+            --bg-color: #f4f1ea;
+            --sidebar-bg: #2e3440;
+            --sidebar-text: #eceff4;
+            --sidebar-active: #4c566a;
+            --note-bg: #ffffff;
+            --line-color: #e0dcd3;
+            --text-color: #333333;
+            --accent-color: #bf616a; /* 赤ペンのイメージ */
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Helvetica Neue', Arial, 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', Meiryo, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* サイドバー（目次・PDFリスト） */
+        .sidebar {
+            width: 280px;
+            background-color: var(--sidebar-bg);
+            color: var(--sidebar-text);
+            display: flex;
+            flex-direction: flex-direction;
+            flex-direction: column;
+            border-right: 1px solid rgba(0,0,0,0.1);
+        }
+
+        .sidebar-header {
+            padding: 20px;
+            font-size: 1.2rem;
+            font-weight: bold;
+            border-bottom: 1px solid var(--sidebar-active);
+            text-align: center;
+        }
+
+        .note-list {
+            list-style: none;
+            overflow-y: auto;
+            flex-grow: 1;
+        }
+
+        .note-item {
+            padding: 15px 20px;
+            cursor: pointer;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+            transition: background 0.2s;
+            font-size: 0.95rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .note-item:hover {
+            background-color: rgba(255, 255, 255, 0.1);
+        }
+
+        .note-item.active {
+            background-color: var(--sidebar-active);
+            font-weight: bold;
+            border-left: 4px solid var(--accent-color);
+        }
+
+        .actions {
+            padding: 15px;
+            border-top: 1px solid var(--sidebar-active);
+        }
+
+        .btn {
+            width: 100%;
+            padding: 10px;
+            background-color: var(--accent-color);
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: opacity 0.2s;
+        }
+
+        .btn:hover {
+            opacity: 0.9;
+        }
+
+        /* メインコンテンツ（ノートエリア） */
+        .main-content {
+            flex-grow: 1;
+            padding: 40px;
+            overflow-y: auto;
+            display: flex;
+            justify-content: center;
+        }
+
+        /* ルーズリーフ風のノート */
+        .notebook {
+            width: 100%;
+            max-width: 800px;
+            background-color: var(--note-bg);
+            min-height: 100%;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+            border-radius: 8px;
+            position: relative;
+            padding: 60px 50px 40px 80px; /* 左側にマージン（穴あきスペース用） */
+            background-image: linear-gradient(var(--line-color) 1px, transparent 1px);
+            background-size: 100% 2em;
+            line-height: 2em;
+        }
+
+        /* ノートの左側の赤い縦線 */
+        .notebook::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 65px;
+            width: 2px;
+            height: 100%;
+            background-color: rgba(191, 97, 106, 0.4);
+        }
+
+        /* ノートのバインダー穴（デザインのアクセント） */
+        .notebook-holes {
+            position: absolute;
+            left: 20px;
+            top: 40px;
+            display: flex;
+            flex-direction: column;
+            gap: 30px;
+        }
+
+        .hole {
+            width: 15px;
+            height: 15px;
+            background-color: var(--bg-color);
+            border-radius: 50%;
+            box-shadow: inset 0 2px 5px rgba(0,0,0,0.1);
+        }
+
+        /* タイトルエリア */
+        .note-title {
+            font-size: 1.8rem;
+            font-weight: bold;
+            margin-bottom: 20px;
+            line-height: 1.2;
+            padding-bottom: 5px;
+            outline: none;
+        }
+
+        /* 本文エリア */
+        .note-body {
+            font-size: 1.05rem;
+            outline: none;
+            white-space: pre-wrap;
+        }
+
+        /* プレースホルダー（空の時の案内） */
+        [contenteditable]:empty:before {
+            content: attr(data-placeholder);
+            color: #aaa;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="sidebar">
+        <div class="sidebar-header">PDF まとめノート</div>
+        <ul class="note-list" id="noteList">
+            </ul>
+        <div class="actions">
+            <button class="btn" id="addNoteBtn">+ 新しいノートを追加</button>
+        </div>
+    </div>
+
+    <div class="main-content">
+        <div class="notebook">
+            <div class="notebook-holes">
+                <div class="hole"></div>
+                <div class="hole"></div>
+                <div class="hole"></div>
+                <div class="hole"></div>
+                <div class="hole"></div>
+            </div>
+            
+            <div class="note-title" id="noteTitle" contenteditable="true" data-placeholder="PDFのタイトルや章を入力..."></div>
+            <div class="note-body" id="noteBody" contenteditable="true" data-placeholder="ここにPDFからコピーした内容や、まとめ、重要なポイントを自由にメモしてください..."></div>
+        </div>
+    </div>
+
+    <script>
+        // サンプルデータ（初期表示用）
+        const defaultNotes = [
+            {
+                id: "1",
+                title: "📄 憲法第1章 講義ノート",
+                body: "【重要なポイント】\n・天皇の地位は「日本国民の総意」に基づく。\n・第9条：戦争の放棄、戦力の不保持、交戦権の否認。\n\n【自分のメモ】\nここはテストに出やすいからPDFの35ページ目をもう一度見直すこと！"
+            },
+            {
+                id: "2",
+                title: "📊 経済学基礎 A講義資料",
+                body: "■ 需要と供給の法則\n価格が上がると需要は減り、供給は増える。\n\n■ キーワード\n・均衡価格：需要量と供給量が一致する価格。\n・機会費用：ある選択肢を選んだことで諦めた価値。"
+            }
+        ];
+
+        // データの読み込み（LocalStorageまたは初期データ）
+        let notes = JSON.parse(localStorage.getItem('pdf_study_notes')) || defaultNotes;
+        let currentNoteId = notes.length > 0 ? notes[0].id : null;
+
+        const noteListEl = document.getElementById('noteList');
+        const noteTitleEl = document.getElementById('noteTitle');
+        const noteBodyEl = document.getElementById('noteBody');
+        const addNoteBtn = document.getElementById('addNoteBtn');
+
+        // サイドバーのリストを描画
+        function renderSidebar() {
+            noteListEl.innerHTML = '';
+            notes.forEach(note => {
+                const li = document.createElement('li');
+                li.className = `note-item ${note.id === currentNoteId ? 'active' : ''}`;
+                li.textContent = note.title || '無題のノート';
+                li.addEventListener('click', () => selectNote(note.id));
+                noteListEl.appendChild(li);
+            });
+        }
+
+        // ノートの選択
+        function selectNote(id) {
+            currentNoteId = id;
+            const note = notes.find(n => n.id === id);
+            if (note) {
+                noteTitleEl.textContent = note.title;
+                noteBodyEl.innerText = note.body; // 改行を維持するためinnerText
+            } else {
+                noteTitleEl.textContent = '';
+                noteBodyEl.innerText = '';
+            }
+            renderSidebar();
+        }
+
+        // ノートの保存
+        function saveNotes() {
+            const currentNote = notes.find(n => n.id === currentNoteId);
+            if (currentNote) {
+                currentNote.title = noteTitleEl.textContent;
+                currentNote.body = noteBodyEl.innerText;
+                localStorage.setItem('pdf_study_notes', JSON.stringify(notes));
+                
+                // サイドバーのタイトルだけリアルタイム更新
+                const activeItem = document.querySelector('.note-item.active');
+                if (activeItem) activeItem.textContent = currentNote.title || '無題のノート';
+            }
+        }
+
+        // 新しいノートを追加
+        addNoteBtn.addEventListener('click', () => {
+            const newId = Date.now().toString();
+            const newNote = {
+                id: newId,
+                title: "📄 新しいノート",
+                body: ""
+            };
+            notes.push(newNote);
+            currentNoteId = newId;
+            saveNotes();
+            selectNote(newId);
+        });
+
+        // 入力時の自動保存イベント
+        noteTitleEl.addEventListener('input', saveNotes);
+        noteBodyEl.addEventListener('input', saveNotes);
+
+        // ペースト時に余計なHTML装飾を剥ぎ取る（プレーンテキスト化）
+        noteBodyEl.addEventListener('paste', (e) => {
+            e.preventDefault();
+            const text = (e.originalEvent || e).clipboardData.getData('text/plain');
+            document.execCommand('insertText', false, text);
+        });
+
+        // 初期実行
+        if (currentNoteId) {
+            selectNote(currentNoteId);
+        } else {
+            renderSidebar();
+        }
+    </script>
+</body>
+</html>
