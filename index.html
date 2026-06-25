@@ -3,34 +3,42 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PDF to 模範ノート生成器</title>
+    <title>PDF to 模範ノート生成器 v2.0</title>
+    <!-- Tailwind CSS for styling -->
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <!-- PDF.js for PDF parsing -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
 </head>
 <body class="bg-gray-50 text-gray-800 min-h-screen p-6">
 
     <div class="max-w-4xl mx-auto bg-white p-8 rounded-xl shadow-md">
-        <h1 class="text-3xl font-bold text-center text-blue-600 mb-6">📝 PDF 模範ノート生成器</h1>
+        <h1 class="text-3xl font-bold text-center text-blue-600 mb-2">📝 PDF 模範ノート生成器</h1>
+        <p class="text-center text-xs text-gray-400 mb-6">Version 2.0 (マルチモーダル・スキャンPDF対応版)</p>
         
+        <!-- 設定セクション -->
         <div class="mb-6 p-4 bg-gray-100 rounded-lg">
             <label class="block text-sm font-semibold mb-2" for="apiKey">Gemini API Key:</label>
             <input type="password" id="apiKey" class="w-full p-2 border border-gray-300 rounded mb-2" placeholder="AI Studioで取得したAPIキーを入力">
             <p class="text-xs text-gray-500">※キーはブラウザにのみ保存され、外部サーバーには送信されません。</p>
         </div>
 
+        <!-- ファイル入力セクション -->
         <div class="mb-6">
-            <label class="block text-sm font-semibold mb-2">PDFファイルをアップロード:</label>
+            <label class="block text-sm font-semibold mb-2">PDFファイルをアップロード (写真スキャンも対応):</label>
             <input type="file" id="pdfFile" accept="application/pdf" class="w-full p-2 border border-dashed border-blue-400 rounded bg-blue-50 text-center cursor-pointer">
         </div>
 
+        <!-- コントロールボタン -->
         <button id="generateBtn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded transition-all disabled:bg-gray-400" disabled>
             ノートを生成する
         </button>
 
+        <!-- ステータス表示 -->
         <div id="status" class="mt-4 text-center text-sm font-medium text-gray-600"></div>
 
         <hr class="my-8 border-gray-200">
 
+        <!-- 出力結果セクション -->
         <div>
             <h2 class="text-xl font-bold mb-4 flex justify-between items-center">
                 ✨ 生成された模範ノート
@@ -43,7 +51,6 @@
     </div>
 
     <script>
-        // PDF.js のワーカーを設定
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
 
         const apiKeyInput = document.getElementById('apiKey');
@@ -53,109 +60,122 @@
         const outputDiv = document.getElementById('output');
         const copyBtn = document.getElementById('copyBtn');
 
-        // ローカルストレージからAPIキーを復元
         if (localStorage.getItem('gemini_api_key')) {
             apiKeyInput.value = localStorage.getItem('gemini_api_key');
         }
 
-        // 入力チェックでボタンを有効化
         const checkInputs = () => {
             generateBtn.disabled = !(apiKeyInput.value && pdfFileInput.files.length > 0);
         };
         apiKeyInput.addEventListener('input', checkInputs);
         pdfFileInput.addEventListener('change', checkInputs);
 
-        // メイン処理
         generateBtn.addEventListener('click', async () => {
             const apiKey = apiKeyInput.value.trim();
             const file = pdfFileInput.files[0];
 
             if (!apiKey || !file) return;
 
-            // APIキーをローカルストレージに保存
             localStorage.setItem('gemini_api_key', apiKey);
 
             try {
                 generateBtn.disabled = true;
-                statusDiv.innerText = "⏳ PDFからテキストを抽出中...";
+                statusDiv.innerText = "⏳ PDFの読み込みを開始...";
                 outputDiv.innerText = "";
                 copyBtn.classList.add('hidden');
 
-                // 1. PDFからテキストを抽出
-                const pdfText = await extractTextFromPDF(file);
+                // 1. PDFの各ページを「画像(Base64)」に変換
+                const base64Images = await extractImagesFromPDF(file);
                 
-                if (!pdfText.trim()) {
-                    throw new Error("PDFからテキストを抽出できませんでした（スキャンされた画像形式の可能性があります）。");
+                if (base64Images.length === 0) {
+                    throw new Error("PDFからページ画像を生成できませんでした。");
                 }
 
-                statusDiv.innerText = "🤖 Gemini APIで模範ノートを生成中...";
+                statusDiv.innerText = `🤖 Gemini APIで画像を解析中（全 ${base64Images.length} ページ）...`;
 
-                // 2. Gemini APIを叩く
-                const notebookContent = await generateNotebook(apiKey, pdfText);
+                // 2. Gemini APIに画像群を丸ごと投げてノート化
+                const notebookContent = await generateNotebook(apiKey, base64Images);
 
-                // 3. 結果を表示
                 outputDiv.innerText = notebookContent;
-                statusDiv.innerText = "✅ 生成が完了しました！";
-                copyBtn.classList.add('inline-block');
+                statusDiv.innerText = "✅ 模範ノートの作成に成功しました！";
                 copyBtn.classList.remove('hidden');
 
             } catch (error) {
                 statusDiv.innerText = "❌ エラーが発生しました。";
                 outputDiv.innerText = error.message;
+                console.error(error);
             } finally {
                 generateBtn.disabled = false;
             }
         });
 
-        // PDFテキスト抽出ロジック
-        async function extractTextFromPDF(file) {
+        // PDFの全ページを画質を保ったまま画像（Base64）の配列に変換する関数
+        async function extractImagesFromPDF(file) {
             const arrayBuffer = await file.arrayBuffer();
             const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-            let fullText = "";
+            const images = [];
 
             for (let i = 1; i <= pdf.numPages; i++) {
+                statusDiv.innerText = `⏳ PDFを画像化しています (${i} / ${pdf.numPages} ページ)...`;
                 const page = await pdf.getPage(i);
-                const textContent = await page.getTextContent();
-                const pageText = textContent.items.map(item => item.str).join(" ");
-                fullText += pageText + "\n";
+                
+                // scale: 1.5 で文字認識に十分な高解像度を確保
+                const viewport = page.getViewport({ scale: 1.5 });
+                const canvas = document.createElement('canvas');
+                const context = canvas.getContext('2d');
+                canvas.height = viewport.height;
+                canvas.width = viewport.width;
+
+                await page.render({ canvasContext: context, viewport: viewport }).promise;
+                
+                // JPEG形式、画質80%で圧縮してBase64化（APIの容量制限対策）
+                const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+                const base64Data = dataUrl.split(',')[1];
+                images.push(base64Data);
             }
-            return fullText;
+            return images;
         }
 
-        // Gemini API 呼び出しロジック
-        async function generateNotebook(apiKey, text) {
-            // プロンプトの定義
-            const prompt = `以下のテキストは、ある資料から抽出されたものです。この内容を、学生やエンジニアが後から見直して一目で理解できる「綺麗な模範ノート」としてまとめ直してください。
-構成は、重要なキーワードの定義、要点の箇条書き、必要であれば構造的なまとめ（数式、プロセスなど）を含めて、マークダウン形式を意識して綺麗に整理してください。
+        // Gemini API (マルチモーダル) 呼び出し関数
+        async function generateNotebook(apiKey, base64Images) {
+            // プロンプトを仕込む
+            const parts = [
+                { text: "添付された画像は、提供された資料のスキャンデータです。これらの画像に書かれている内容（文章、図、数式など）を正確に読み取り、後から見直して一目で理解できる綺麗な「模範ノート」としてまとめ直してください。\n\n【出力のルール】\n・重要なキーワードの定義を明記する。\n・要点を箇条書きで分かりやすく整理する。\n・数式や重要なプロセスがあれば構造化して記載する。\n・見出しなどを使い、マークダウン形式で美しく整形して出力してください。" }
+            ];
 
-【対象テキスト】
-${text}`;
+            // 変換した全ページの画像をリクエストの配列に突っ込む
+            base64Images.forEach(base64 => {
+                parts.push({
+                    inlineData: {
+                        mimeType: "image/jpeg",
+                        data: base64
+                    }
+                });
+            });
 
+            // 最新の gemini-2.5-flash を使用
             const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json"
                 },
                 body: JSON.stringify({
-                    contents: [{
-                        parts: [{ text: prompt }]
-                    }]
+                    contents: [{ parts: parts }]
                 })
             });
 
             if (!response.ok) {
                 const errData = await response.json();
-                throw new Error(errData.error?.message || "APIリクエストに失敗しました。");
+                throw new Error(errData.error?.message || "Gemini APIとの通信に失敗しました。");
             }
 
             const data = await response.json();
             return data.candidates[0].content.parts[0].text;
         }
 
-        // コピーボタンの処理
         copyBtn.addEventListener('click', () => {
             navigator.clipboard.writeText(outputDiv.innerText);
-            alert('クリップボードにコピーしました！');
+            alert('ノートをクリップボードにコピーしました！');
         });
     </script>
 </body>
